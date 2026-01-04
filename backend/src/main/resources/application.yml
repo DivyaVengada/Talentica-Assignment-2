@@ -1,0 +1,70 @@
+spring:
+  application:
+    name: food-delivery-backend
+
+  datasource:
+    url: jdbc:mysql://localhost:5432/food
+    username: food
+    password: food
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+    properties:
+      hibernate:
+        format_sql: false
+
+  flyway:
+    enabled: false
+
+  data:
+    redis:
+      host: localhost
+      port: 6379
+
+  kafka:
+    bootstrap-servers: localhost:9092
+    consumer:
+      group-id: food-delivery-backend
+      auto-offset-reset: earliest
+    producer:
+      acks: all
+
+app:
+  kafka:
+    topics:
+      driverLocation: driver.location
+  tracking:
+    staleSeconds: 15
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      show-details: always
+
+---
+spring:
+  config:
+    activate:
+      on-profile: docker
+
+  datasource:
+    url: ${SPRING_DATASOURCE_URL}
+    username: ${SPRING_DATASOURCE_USERNAME}
+    password: ${SPRING_DATASOURCE_PASSWORD}
+
+  data:
+    redis:
+      host: ${SPRING_DATA_REDIS_HOST}
+      port: 6379
+
+  kafka:
+    bootstrap-servers: ${SPRING_KAFKA_BOOTSTRAP_SERVERS}
+
+server:
+  address: 0.0.0.0
+  port: 8080

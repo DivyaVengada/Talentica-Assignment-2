@@ -1,0 +1,180 @@
+openapi: 3.0.3
+info:
+  title: Food Delivery Backend API
+  version: 1.0.0
+  description: |
+    Reference backend for a food delivery marketplace.
+    - Live driver tracking after pickup (customer polling)
+    - Menu + status (cache-first)
+    - GPS ingest -> Kafka -> Redis read models
+servers:
+  - url: http://localhost:8080
+paths:
+  /internal/demo/bootstrap:
+    post:
+      summary: Bootstrap demo data (restaurants, drivers, orders)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                drivers: { type: integer, example: 50 }
+                restaurants: { type: integer, example: 10 }
+                orders: { type: integer, example: 50 }
+      responses:
+        '200':
+          description: Bootstrapped
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  driversCreated: { type: integer }
+                  restaurantsCreated: { type: integer }
+                  ordersCreated: { type: integer }
+  /api/restaurants/{restaurantId}/menu:
+    get:
+      summary: Get restaurant menu + status (cache-first)
+      parameters:
+        - in: path
+          name: restaurantId
+          required: true
+          schema: { type: integer }
+      responses:
+        '200':
+          description: Menu + status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MenuResponse'
+  /api/orders:
+    post:
+      summary: Create an order
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateOrderRequest'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrderResponse'
+  /api/orders/{orderId}/pickup:
+    post:
+      summary: Mark order picked up and enable tracking
+      parameters:
+        - in: path
+          name: orderId
+          required: true
+          schema: { type: integer }
+      responses:
+        '200':
+          description: OK
+  /api/orders/{orderId}/assign/{driverId}:
+    post:
+      summary: Assign a driver to an order
+      parameters:
+        - in: path
+          name: orderId
+          required: true
+          schema: { type: integer }
+        - in: path
+          name: driverId
+          required: true
+          schema: { type: integer }
+      responses:
+        '200':
+          description: OK
+  /api/orders/{orderId}/tracking:
+    get:
+      summary: Get tracking view (Redis read model)
+      parameters:
+        - in: path
+          name: orderId
+          required: true
+          schema: { type: integer }
+      responses:
+        '200':
+          description: Tracking
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TrackingResponse'
+  /api/drivers/{driverId}/location:
+    post:
+      summary: Ingest driver GPS location (publishes to Kafka)
+      parameters:
+        - in: path
+          name: driverId
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DriverLocationUpdate'
+      responses:
+        '202':
+          description: Accepted
+
+components:
+  schemas:
+    CreateOrderRequest:
+      type: object
+      required: [restaurantId, customerLat, customerLng]
+      properties:
+        restaurantId: { type: integer, example: 1 }
+        customerLat: { type: number, example: 12.935 }
+        customerLng: { type: number, example: 77.625 }
+    OrderResponse:
+      type: object
+      properties:
+        orderId: { type: integer }
+        state: { type: string }
+        restaurantId: { type: integer }
+        driverId: { type: integer, nullable: true }
+    DriverLocationUpdate:
+      type: object
+      required: [lat, lng, timestamp]
+      properties:
+        eventId: { type: string, example: 'c8b0b8f6-4b0a-4d7c-8a07-0a0f2d01a0cd' }
+        lat: { type: number, example: 12.93521 }
+        lng: { type: number, example: 77.62451 }
+        heading: { type: integer, example: 110 }
+        speedMps: { type: number, example: 6.2 }
+        timestamp: { type: string, format: date-time }
+    TrackingResponse:
+      type: object
+      properties:
+        orderId: { type: integer }
+        state: { type: string }
+        driverId: { type: integer, nullable: true }
+        driverLat: { type: number, nullable: true }
+        driverLng: { type: number, nullable: true }
+        locationTimestamp: { type: string, format: date-time, nullable: true }
+        etaMinSeconds: { type: integer, nullable: true }
+        etaMaxSeconds: { type: integer, nullable: true }
+        batchingStopsBeforeYou: { type: integer, nullable: true }
+        batchingMessage: { type: string, nullable: true }
+        freshnessSeconds: { type: integer, nullable: true }
+    MenuResponse:
+      type: object
+      properties:
+        restaurantId: { type: integer }
+        restaurantName: { type: string }
+        isOpen: { type: boolean }
+        menuItems:
+          type: array
+          items:
+            type: object
+            properties:
+              itemId: { type: integer }
+              name: { type: string }
+              price: { type: number }
