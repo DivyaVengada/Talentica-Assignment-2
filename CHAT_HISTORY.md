@@ -2,7 +2,7 @@
 
 > Note: This file contains the **user ↔ AI assistant** conversation transcript for this design. It intentionally excludes hidden system/developer instructions and tool/debug outputs.
 
----
+
 
 ## Transcript
 
@@ -127,6 +127,56 @@ Generated and provided a ZIP project containing:
 - Python simulator (50 drivers, 10 events/sec total)
 
 ### User
+Why am I getting NoSuchFieldError: ESCAPE_CHARACTER during Spring Boot startup?
+
+### Assistant
+
+This happened because Spring Boot versions were mixed (parent 3.5.3 + BOM 3.3.5). The fix was to remove the BOM override and use only the parent version.
+
+### User
+Flyway says “Unsupported Database: PostgreSQL 16.11”. Why?
+### Assistant
+Flyway bundled with Spring Boot didn’t support PG 16.11. Switching to Postgres 16.2 fixed it.
+
+###  User
+Hibernate says “Schema-validation: missing table [drivers]”. What’s wrong?
+### Assistant
+Hibernate was in validate mode but the table didn’t exist. Fix was to use ddl-auto=update or create a Flyway migration.
+
+### User
+Simulator can’t reach backend — connection refused. Why?
+### Assistant
+Spring Boot was binding to localhost inside Docker. Setting server.address=0.0.0.0 fixed it.
+
+### User
+Simulator still fails even after fixing the address.
+### Assistant
+Simulator started too early while backend services (Postgres, Redis, Kafka) were still initializing. Adding a startup wait or readiness loop fixed it.
+
+### User
+Do I need Redis running for unit tests?
+### Assistant
+No. Pure Mockito tests mock Redis, so no real Redis instance is needed.
+
+### User
+Why do tests fail with “Instant not supported by default”?
+### Assistant
+The ObjectMapper in tests didn’t register JavaTimeModule. Adding it fixed the issue.
+
+### User
+Docker Compose is using too much memory. Why?
+### Assistant
+Kafka + Postgres + backend consumed too much RAM. Adding memory limits and switching Kafka to Redpanda solved it.
+
+### User
+My Men### Uservice and TrackingService tests are failing. Why?
+### Assistant
+Redis mocking and JavaTimeModule were missing. Updated test suites fixed both issues.
+
+
+
+
+### User
 can you update the CHAT_HISTORY.md ... give me very brief summary
 
 ### Assistant
@@ -138,7 +188,6 @@ include full chat transcript in chat_history file
 ### Assistant
 (You are here.) Generated an updated `CHAT_HISTORY.md` containing this full transcript and packaged it in a ZIP.
 
----
 
 ## End
  
