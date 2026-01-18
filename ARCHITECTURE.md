@@ -63,7 +63,7 @@ We adopted a **hybrid CQRS pattern**: separating the **write side** (Postgres) f
 6. Call menu endpoint twice to show cache miss vs hit.
 
 ---
-![Copilot_20260118_183345.png](..%2FCopilot_20260118_183345.png)
+
 ## Testing and Coverage
 - **Unit tests**: Pure Mockito, Redis and Kafka mocked.
 - **Serialization**: `JavaTimeModule` registered for `Instant`.
