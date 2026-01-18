@@ -5,8 +5,7 @@ import lombok.NoArgsConstructor;
 
 import java.time.Instant;
 
-@Data
-@NoArgsConstructor
+
 public class TrackingResponse {
     private Long orderId;
     private String state;
@@ -18,6 +17,10 @@ public class TrackingResponse {
     private Integer etaMaxSeconds;
     private Integer batchingStopsBeforeYou;
     private String batchingMessage;
+
+    public TrackingResponse() {
+    }
+
     private Integer freshnessSeconds;
 
     public TrackingResponse(Long orderId, String state, Long driverId, Double driverLat, Double driverLng,
