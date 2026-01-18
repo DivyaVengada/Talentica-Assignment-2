@@ -1,99 +1,74 @@
-# ARCHITECTURE
+# Food Delivery Backend Architecture
 
-    ## 1. Architectural pattern
+## Overview
+The backend is designed as a **Spring Boot** application with supporting services:
+- **Postgres** → System of record for all transactional data (orders, drivers, restaurants).
+- **Kafka** → Event backbone for high‑throughput GPS updates and replayability.
+- **Redis** → Read‑model cache for hot paths like restaurant menus and order tracking.
 
-    **Event-driven + CQRS read models (cache-first)** within a single backend service.
+We adopted a **hybrid CQRS pattern**: separating the **write side** (Postgres) from the **read side** (Redis).
 
-    - **Write side (truth):** Postgres stores orders, restaurants, drivers.
-    - **Event stream:** Driver GPS updates are sent to a Kafka topic.
-    - **Read side (fast):** Redis stores read models used by latency-sensitive endpoints:
-      - `GET /api/orders/{id}/tracking` (tracking view)
-      - `GET /api/restaurants/{id}/menu` (menu + status)
+---
 
-    This keeps hot read paths deterministic and protects Postgres under peak read traffic.
+## CQRS Pattern
+- **Write Side**
+    - All commands (create order, assign driver, mark pickup/delivery) are persisted in Postgres.
+    - Provides strong consistency and durability.
+- **Read Side**
+    - Pre‑computed views are stored in Redis for low‑latency reads.
+    - Examples:
+        - `restaurant:{id}:menu_plus_status` → cached menu with availability.
+        - `order:{id}:tracking_view` → cached tracking view updated from Kafka events.
+- **Trade‑off**
+    - Eventual consistency: reads may lag a few seconds behind writes.
+    - Benefit: predictable latency (<200ms) and scalability under heavy load.
 
-    ## 2. Component diagram (logical)
+---
 
-    ```mermaid
-    flowchart LR
-      subgraph Clients
-        C[Customer App
-(poll 3-4s)]
-        D[Driver App
-GPS updates]
-        R[Restaurant Portal]
-      end
+## Component Communication
+1. **Menu Flow**
+    - Client → `GET /api/restaurants/{id}/menu`
+    - Service checks Redis → returns cached view if present.
+    - On cache miss → fetch from Postgres, build DTO, write to Redis with TTL.
 
-      subgraph Backend[Spring Boot 3 Backend]
-        API[REST API]
-        KPROD[Kafka Producer
-(GPS)]
-        KCONS[Kafka Consumer
-(GPS)]
-        SRV[Domain Services
-(Order/Menu/Tracking)]
-      end
+2. **Tracking Flow**
+    - Driver → `POST /api/drivers/{id}/location`
+    - Backend publishes `DriverLocationEvent` to Kafka.
+    - Consumer reads Kafka → dedupes → updates Redis keys:
+        - `driver:{driverId}:latest`
+        - `order:{orderId}:tracking_view`
+    - Customer → `GET /api/orders/{id}/tracking` → served directly from Redis.
 
-      subgraph Data
-        PG[(Postgres
-System of Record)]
-        REDIS[(Redis
-Read Models/Cache)]
-        KAFKA[(Kafka Topic
-driver.location)]
-      end
+---
 
-      D -->|POST /drivers/{id}/location| API
-      API --> KPROD --> KAFKA
-      KAFKA --> KCONS --> REDIS
+## Key Decisions and Trade‑offs
+- **Polling vs WebSockets**
+    - Polling every 3–4 seconds chosen for MVP: simpler, more reliable on mobile networks.
+    - WebSockets/SSE optional for push updates later.
+- **Kafka vs simpler queue**
+    - Kafka chosen for scale, ordering, and replayability.
+    - Trade‑off: heavier operational overhead.
+- **Redis read models**
+    - Fast reads at scale.
+    - Trade‑off: eventual consistency and need for TTL/invalidation.
 
-      C -->|GET /orders/{id}/tracking| API --> REDIS
-      R -->|menu updates| API --> PG
-      API -->|invalidate/update cache| REDIS
-      API --> PG
-    ```
+---
 
-    ## 3. Communication flows
+## Demo Workflow
+1. Start services with `docker-compose up --build`.
+2. Bootstrap demo data via `POST /internal/demo/bootstrap`.
+3. Simulate driver GPS updates via API or simulator.
+4. Inspect Redis keys with `redis-cli`.
+5. Poll tracking endpoint to see freshness and ETA fields.
+6. Call menu endpoint twice to show cache miss vs hit.
 
-    ### 3.1 Driver GPS ingest
-    1. Driver sends GPS update to backend
-    2. Backend publishes event to Kafka (`driver.location`)
-    3. Consumer updates Redis:
-       - `driver:{driverId}:latest`
-       - for each active order mapped to driver: `order:{orderId}:tracking_view`
-
-    ### 3.2 Customer tracking read
-    - Customer polls every 3–4 seconds.
-    - Backend reads `order:{orderId}:tracking_view` from Redis.
-
-    ### 3.3 Menu + status read
-    - Cache-aside from Redis.
-    - Menu changes invalidate `restaurant:{id}:menu_plus_status`.
-
-    ## 4. Reliability & performance principles
-
-    - **Cache-first read paths** for p99 targets (menu/status and tracking).
-    - **Async event pipeline** for high-throughput GPS ingestion (Kafka).
-    - **Idempotency** for ingest: client sends `eventId` (UUID) optional; backend dedupes via Redis TTL key.
-    - **Degraded mode**: if Kafka consumer lags, tracking returns last-known location with freshness timestamp.
-
-    ## 5. Technology justification
-
-    ### Spring Boot 3
-    - Strong ecosystem for REST, data access, configuration, and operational features.
-    - Spring Boot’s production-ready capabilities are commonly provided via Actuator endpoints (health/metrics). (See Spring Boot documentation.)
-
-    ### Kafka
-    - Suitable for high-throughput event streams and decoupling producers/consumers.
-    - Kafka is commonly modeled as a distributed commit log / event log enabling replay and independent consumption.
-
-    ### Redis
-    - Used as an in-memory cache/read-model store to keep p99 latency low and stable.
-
-    ### Postgres
-    - System of record with strong transactional guarantees for orders and payments.
-
-    ### References
-    - Spring Boot production-ready features (Actuator): https://docs.spring.io/spring-boot/reference/actuator/index.html
-    - Kafka event log model overview: https://axonops.com/docs/data-platforms/kafka/concepts/
-    - RabbitMQ messaging broker overview (contrast for queue semantics): https://www.rabbitmq.com/
+---
+![Copilot_20260118_183345.png](..%2FCopilot_20260118_183345.png)
+## Testing and Coverage
+- **Unit tests**: Pure Mockito, Redis and Kafka mocked.
+- **Serialization**: `JavaTimeModule` registered for `Instant`.
+- **Coverage**: Target 80–90% for service logic, 100% for critical utilities.
+- Reports generated via:
+  ```bash
+  mvn clean test jacoco:report
+  open target/site/jacoco/index.html
